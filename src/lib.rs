@@ -44,36 +44,75 @@ pub mod prelude {
 }
 
 pub mod access {
-    pub enum Read {}
-    pub enum Write {}
-    pub enum ReadWrite {}
+
+    pub mod visibility {
+        pub trait StageTypes {
+            const STAGES: wgpu::ShaderStages;
+        }
+        impl<A: StageTypes, B: StageTypes> StageTypes for And<A, B> {
+            const STAGES: wgpu::ShaderStages = A::STAGES.union(B::STAGES);
+        }
+        pub enum And<A, B> {
+            A(A),
+            B(B),
+        }
+        impl StageTypes for Vertex {
+            const STAGES: wgpu::ShaderStages = wgpu::ShaderStages::VERTEX;
+        }
+        pub enum Vertex {}
+        impl StageTypes for Fragment {
+            const STAGES: wgpu::ShaderStages = wgpu::ShaderStages::FRAGMENT;
+        }
+        pub enum Fragment {}
+        impl StageTypes for Compute {
+            const STAGES: wgpu::ShaderStages = wgpu::ShaderStages::COMPUTE;
+        }
+        pub enum Compute {}
+        pub type FragmentCompute = And<Fragment, Compute>;
+        pub type All = And<Vertex, FragmentCompute>;
+    }
+    pub use visibility::*;
+
+    pub struct Read<Stages = FragmentCompute>(Stages);
+    pub struct Write<Stages = FragmentCompute>(Stages);
+    pub struct ReadWrite<Stages = FragmentCompute>(Stages);
     pub trait AccessType {
         fn storage_texture_access() -> wgpu::StorageTextureAccess;
         fn storage_buffer_type() -> wgpu::BufferBindingType;
+        fn visible_stages() -> wgpu::ShaderStages;
     }
 
-    impl AccessType for Read {
+    impl<S: StageTypes> AccessType for Read<S> {
         fn storage_texture_access() -> wgpu::StorageTextureAccess {
             wgpu::StorageTextureAccess::ReadOnly
         }
         fn storage_buffer_type() -> wgpu::BufferBindingType {
             wgpu::BufferBindingType::Storage { read_only: true }
         }
+        fn visible_stages() -> wgpu::ShaderStages {
+            S::STAGES
+        }
     }
-    impl AccessType for Write {
+    impl<S: StageTypes> AccessType for Write<S> {
         fn storage_texture_access() -> wgpu::StorageTextureAccess {
             wgpu::StorageTextureAccess::WriteOnly
         }
         fn storage_buffer_type() -> wgpu::BufferBindingType {
             wgpu::BufferBindingType::Storage { read_only: false }
         }
+        fn visible_stages() -> wgpu::ShaderStages {
+            S::STAGES
+        }
     }
-    impl AccessType for ReadWrite {
+    impl<S: StageTypes> AccessType for ReadWrite<S> {
         fn storage_texture_access() -> wgpu::StorageTextureAccess {
             wgpu::StorageTextureAccess::ReadWrite
         }
         fn storage_buffer_type() -> wgpu::BufferBindingType {
             wgpu::BufferBindingType::Storage { read_only: false }
+        }
+        fn visible_stages() -> wgpu::ShaderStages {
+            S::STAGES
         }
     }
 }
@@ -131,6 +170,7 @@ pub mod group_traits {
         BTreeMap<(TypeId, TypeId), Arc<wgpu::BindGroupLayout>>,
     > = parking_lot::RwLock::new(BTreeMap::new());
 
+    /// We can't get the TypeId of a reference, but we can get the typeid of a closure that accepts that reference as an argument
     fn type_id<T>() -> TypeId {
         std::any::Any::type_id(&|_: T| ())
     }
@@ -181,6 +221,12 @@ pub mod group_traits {
         tuple: T,
         group: wgpu::BindGroup,
         _access: std::marker::PhantomData<A>,
+    }
+
+    impl<T, A> BoundTuple<T, A> {
+        pub fn into_inner(self) -> T {
+            self.tuple
+        }
     }
 
     pub trait BindFor<A> {
@@ -447,7 +493,7 @@ pub mod m {
             $device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
                 label: None,
                 bind_group_layouts: &[
-                    $($layout)*,
+                    $($layout,)*
                 ],
                 push_constant_ranges: &[],
             })
@@ -593,7 +639,7 @@ pub mod util {
                 label: Some("Reproject Control"),
                 entries: &[wgpu::BindGroupLayoutEntry {
                     binding: 0,
-                    visibility: wgpu::ShaderStages::COMPUTE,
+                    visibility: A::visible_stages(),
                     ty: wgpu::BindingType::Buffer {
                         ty: A::storage_buffer_type(),
                         has_dynamic_offset: false,
@@ -875,7 +921,7 @@ impl<A: AccessType, T: TextureFormat> BindLayoutEntryFor<A> for TypedTexture<T> 
     fn layout_entry(idx: u32) -> wgpu::BindGroupLayoutEntry {
         wgpu::BindGroupLayoutEntry {
             binding: idx,
-            visibility: wgpu::ShaderStages::COMPUTE | wgpu::ShaderStages::FRAGMENT,
+            visibility: A::visible_stages(),
             ty: wgpu::BindingType::StorageTexture {
                 access: A::storage_texture_access(),
                 format: T::FORMAT,
@@ -900,7 +946,7 @@ impl<A: AccessType> BindLayoutEntryFor<A> for wgpu::Buffer {
     fn layout_entry(idx: u32) -> wgpu::BindGroupLayoutEntry {
         wgpu::BindGroupLayoutEntry {
             binding: idx,
-            visibility: wgpu::ShaderStages::COMPUTE | wgpu::ShaderStages::FRAGMENT,
+            visibility: A::visible_stages(),
             ty: wgpu::BindingType::Buffer {
                 ty: A::storage_buffer_type(),
                 has_dynamic_offset: false,

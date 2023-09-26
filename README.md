@@ -53,17 +53,33 @@ impl MyShader {
         let pipeline = PRECOMPUTE.cache_with_layout(wsb::create_pipeline_layout!(
             [device]
             layouts: {
-                (wgpu::Buffer,): Read, // input date
-                BoundControlData: Read, // 
-                (shader::TypedTexture<shader::RGBA8Unorm<shader::D2>>,): ReadWrite // output
+                (wgpu::Buffer,): ReadWrite,
             }
-            push_constant_ranges: &[wgpu::PushConstantRange {
-                stages: wgpu::ShaderStages::COMPUTE,
-                range: 0..(mem::size_of::<DispatchData>() as u32),
-            }]
+            // Optionally, define push constants
+            // push_constant_ranges: &[wgpu::PushConstantRange {
+            //     stages: wgpu::ShaderStages::COMPUTE,
+            //     range: 0..8,
+            // }]
 
         ));
         Self { pipeline }
+    }
+    fn run(&self, device: &wgpu::Device, encoder: &mut wgpu::CommandEncoder, buffer: &wgpu::Buffer) {
+        let Pipelines {
+            precompute_pass1,
+            ..
+        } = &*self.pipeline.load(device);
+
+        let buffer_group = (buffer,).bind(device);
+
+        let mut cpass = encoder.begin_compute_pass(&wgpu::ComputePassDescriptor {
+            label: Some("precompute pass"),
+            ..Default::default()
+        });
+
+        cpass.set_pipeline(precompute_pass1);
+        cpass.set_bind_group(0, buffer_group.group::<Read>());
+        cpass.dispatch_workgroups(1,1,1);
     }
 }
 ```

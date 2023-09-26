@@ -8,7 +8,7 @@ fn main() {
     env_logger::init();
 
     let instance = wgpu::Instance::default();
-    let (adapter, device, queue) = pollster::block_on(async {
+    let (_adapter, device, queue) = pollster::block_on(async {
         let adapter = wgpu::util::initialize_adapter_from_env_or_default(&instance, None)
             .await
             .unwrap();
