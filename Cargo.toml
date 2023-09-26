@@ -4,6 +4,9 @@ version = "0.1.0"
 edition = "2021"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+[features]
+default = ["bytemuck_derive"]
+bytemuck_derive = ["bytemuck/derive"]
 
 [dependencies]
 wgpu = { version = "0.17", features = ["naga"] }
@@ -16,6 +19,7 @@ linkme = "0.3"
 
 [dev-dependencies]
 env_logger = "0.10"
+pollster = "0.3"
 
 [patch.crates-io]
 wgpu = { git = "https://github.com/gfx-rs/wgpu", rev = "27f2ce3" }

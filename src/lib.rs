@@ -19,6 +19,8 @@ use notify_debouncer_mini::{new_debouncer, notify::*, Debouncer};
 
 use linkme::distributed_slice;
 
+pub use bytemuck;
+
 #[distributed_slice]
 pub static SHADERS: [Shader] = [..];
 
@@ -362,7 +364,7 @@ pub mod m {
                 ) -> Self {
                     Self {
                         $($entry: device.create_compute_pipeline(&wgpu::ComputePipelineDescriptor {
-                            label: Some(stringify!(file!() + $entry)),
+                            label: Some(concat!(stringify!($entry), " ", "(", module_path!(), "::", stringify!($p), " ", file!(), ":", line!(), ")")),
                             layout: Some(&pipeline_layout),
                             module: &shader,
                             entry_point: stringify!($entry),
@@ -504,7 +506,7 @@ pub mod d {
                 std::fs::read_to_string(&path)
                     .map_err(|e| {
                         log::error!(
-                            "Unable to load live shader source from {}: {}",
+                            "Unable to load live shader source for module from {}: {}",
                             path.display(),
                             e
                         );
@@ -522,7 +524,6 @@ pub mod d {
                         ..Default::default()
                     })
                     .map_err(|e| {
-                        println!("UHOH");
                         log::error!("Unable to compose shader from {}: {}", path.display(), e);
                     })
                     .ok();
@@ -753,8 +754,8 @@ impl Shader {
                     ..Default::default()
                 })
                 .map_err(|e| {
-                    log::error!(
-                        "Unable to compile built in source for {}: {}",
+                    log::warn!(
+                        "Unable to compile bundled source for {}: {}",
                         self.shader_path,
                         e.emit_to_string(&composer)
                     );
@@ -766,7 +767,7 @@ impl Shader {
         wgpu::ShaderSource::Naga(Cow::Owned(included.clone()))
     }
     pub fn load(&'static self) -> wgpu::ShaderSource {
-        println!("LOADING SHADER {:?}!", self.shader_path);
+        log::info!("Loading shader {:?}", self.shader_path);
         match self.try_load() {
             Some(s) => s,
             None => self.load_static(),
@@ -775,13 +776,12 @@ impl Shader {
 
     fn setup_notify(&'static self) {
         self.debouncer.get_or_init(|| {
-            println!("INITALIZING NOTIFY");
+            log::info!("Initializing notifier for {:?}", self.shader_path);
             let flag: &'static AtomicBool = &self.flag;
 
             let mut debouncer = new_debouncer(Duration::from_millis(200), None, move |events| {
                 if let Ok(_events) = events {
                     std::thread::sleep(Duration::from_millis(50));
-                    //println!("NOTIFY EVENT! {:?}", events);
                     flag.store(true, Ordering::Release);
                 }
             })
@@ -796,8 +796,8 @@ impl Shader {
                     RecursiveMode::NonRecursive,
                 )
                 .expect(&format!(
-                    "Unable to watch {} {}",
-                    self.source_path, self.shader_path
+                    "Unable to watch for updates to shader {} defined in {}",
+                    self.shader_path, self.source_path,
                 ));
             debouncer
         });
@@ -823,8 +823,8 @@ impl Shader {
         }) {
             Ok(module) => module,
             Err(e) => {
-                println!(
-                    "ERROR PARSING MODULE {:?} !!!!!!!!!! \n\n{}\n\n ^^^^^^^^^^^^^^^^^^^^^^",
+                log::error!(
+                    "Error parsing module {:?} \n\n{}\n ^^^^^^^^^^^^^^^^^^^^^^ end of errors for {0:?} ",
                     self.shader_path,
                     e.emit_to_string(&composer)
                 );
@@ -838,9 +838,11 @@ impl Shader {
         .validate(&module)
         {
             Err(e) => {
-                println!("ERROR VALIDATING MODULE {:?} !!!!!!!!!!", self.shader_path);
-                e.emit_to_stderr_with_path(&source, self.shader_path);
-                println!("^^^^^^^^^^^^^^^^^^^^^^");
+                log::error!(
+                    "Error validating module {:?} \n\n{}\n ^^^^^^^^^^^^^^^^^^^^^^ end of errors for {0:?}",
+                    self.shader_path,
+                    e.emit_to_string_with_path(&source, self.shader_path)
+                );
                 return None;
             }
             _ => (),
