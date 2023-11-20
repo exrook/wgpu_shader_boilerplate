@@ -9,9 +9,9 @@ default = ["bytemuck_derive"]
 bytemuck_derive = ["bytemuck/derive"]
 
 [dependencies]
-wgpu = { version = "0.17", features = ["naga"] }
+wgpu = { version = "0.18", features = ["naga"] }
 log = "0.4"
-naga_oil = "0.9"
+naga_oil = "0.11"
 bytemuck = "1.13"
 notify-debouncer-mini = { version = "0.3", default-features = false }
 parking_lot = "0.12"
@@ -20,8 +20,3 @@ linkme = "0.3"
 [dev-dependencies]
 env_logger = "0.10"
 pollster = "0.3"
-
-[patch.crates-io]
-wgpu = { git = "https://github.com/gfx-rs/wgpu", rev = "27f2ce3" }
-naga = { git = "https://github.com/gfx-rs/naga", rev = "df8107b7" }
-naga_oil = { git = "https://github.com/exrook/naga_oil", branch = "update_indexmap" }
